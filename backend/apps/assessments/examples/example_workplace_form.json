@@ -1,0 +1,14 @@
+{
+  "name": "Industrial Supervisor Evaluation (EXAMPLE: replace with the official form)",
+  "assessor_role": "WORKPLACE_SUPERVISOR",
+  "weight_percent": 60,
+  "criteria": [
+    { "code": "W01", "section": "Professional conduct", "name": "Punctuality and attendance", "type": "SCORE", "max_score": 10, "weight": 1, "required": true },
+    { "code": "W02", "section": "Professional conduct", "name": "Initiative and self-direction", "type": "SCORE", "max_score": 10, "weight": 1, "required": true },
+    { "code": "W03", "section": "Professional conduct", "name": "Teamwork and communication", "type": "SCORE", "max_score": 10, "weight": 1, "required": true },
+    { "code": "W04", "section": "Technical work", "name": "Quality of work produced", "type": "SCORE", "max_score": 10, "weight": 2, "required": true },
+    { "code": "W05", "section": "Technical work", "name": "Application of knowledge and skills", "type": "SCORE", "max_score": 10, "weight": 2, "required": true },
+    { "code": "W06", "section": "Technical work", "name": "Ability to learn new tools", "type": "SCORE", "max_score": 10, "weight": 1, "required": false },
+    { "code": "W99", "section": "General", "name": "Supervisor's overall comment", "type": "COMMENT", "required": false }
+  ]
+}

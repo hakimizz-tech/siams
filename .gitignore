@@ -1,0 +1,41 @@
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+db.sqlite3
+# --- env and secrets ---
+.env
+.env.*
+!.env.example
+# --- uploads (dev only, grouped by day) and collected static ---
+backend/media/*
+!backend/media/.gitkeep
+backend/staticfiles/
+# --- node / frontend ---
+node_modules/
+frontend/dist/
+# --- editors / os ---
+.idea/
+.vscode/
+.DS_Store
+# --- docker / certs ---
+infra/certs/
+*.bak
+
+*.sh
+*.bak
+
+docs/architecture.md
+docs/frontend-design.md
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+student internship and attachment management system proposal.docx

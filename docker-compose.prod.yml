@@ -1,0 +1,68 @@
+# Usage:  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Requires Docker Compose >= 2.24 (uses the !reset tag).
+#
+# With managed Postgres / Redis / RabbitMQ / object storage, drop the db, redis and
+# rabbitmq services and point DATABASE_URL, REDIS_URL, CELERY_BROKER_URL and the
+# STORAGE_* variables in .env at the managed endpoints. Nothing else changes.
+#
+# Release order on every deploy:  make prod-build && make prod-migrate && make prod-up
+
+x-prod-build: &prod-build
+  context: ./backend
+  target: prod
+  args:
+    STORAGE_EXTRA: ${STORAGE_EXTRA:-s3}     # s3 | gcs | azure, must match STORAGE_BACKEND
+
+services:
+  db:
+    restart: unless-stopped
+    ports: !reset []
+  redis:
+    restart: unless-stopped
+  rabbitmq:
+    restart: unless-stopped
+    ports: !reset []
+  mailpit:
+    profiles: ["dev-only"]
+
+  backend:
+    build: *prod-build
+    image: ${IMAGE_REPO:-siams-backend}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 30
+    environment:
+      RUN_MIGRATIONS: "0"                   # migrations are a release step (make prod-migrate)
+      COLLECTSTATIC: "1"                    # refresh the shared static volume on start
+    volumes: !reset
+      - staticfiles:/app/staticfiles
+      # Only when STORAGE_BACKEND=filesystem on a single server:
+      # - media:/app/media
+
+  worker:
+    build: *prod-build
+    image: ${IMAGE_REPO:-siams-backend}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: celery -A config worker -l info -Q default,notifications,reports --concurrency 4
+    volumes: !reset []
+
+  beat:
+    build: *prod-build
+    image: ${IMAGE_REPO:-siams-backend}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    volumes: !reset []
+
+  nginx:
+    restart: unless-stopped
+    volumes: !reset
+      - ./infra/nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./infra/nginx/proxy_params:/etc/nginx/proxy_params:ro
+      - staticfiles:/var/www/static:ro
+      - frontend_dist:/usr/share/nginx/html:ro
+    ports: !override
+      - "80:80"
+      # - "443:443"                         # when terminating TLS here (see nginx.prod.conf)
+
+volumes:
+  staticfiles:
+  frontend_dist:                            # filled by the frontend image later
+  media:

@@ -1,0 +1,47 @@
+# Frontend targets. Included by the main Makefile (same pattern as Makefile.alpha).
+.PHONY: fe-install fe-test fe-test-watch fe-lint fe-lint-fix fe-typecheck fe-types fe-types-check \
+        fe-e2e fe-build fe-image fe-shell
+
+FE := $(COMPOSE) --profile frontend run --rm frontend
+
+# production now includes the frontend service and the network layout
+PROD := $(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.prod.frontend.yml
+
+fe-install: ## Frontend: npm ci inside the container (refreshes the node_modules volume)
+	$(FE) npm ci
+
+fe-test: ## Frontend: unit, component and integration tests (Vitest)
+	$(FE) npm test
+
+fe-test-watch: ## Frontend: tests in watch mode
+	$(FE) npm run test:watch
+
+fe-lint: ## Frontend: ESLint + Prettier check
+	$(FE) npm run lint
+
+fe-lint-fix: ## Frontend: auto-fix ESLint and Prettier issues
+	$(FE) npm run lint:fix
+
+fe-typecheck: ## Frontend: TypeScript
+	$(FE) npm run typecheck
+
+fe-types: ## Frontend: regenerate src/types/api.d.ts from the running backend schema
+	$(COMPOSE) --profile frontend run --rm -e OPENAPI_URL=http://nginx/api/schema/ frontend npm run api:types
+
+fe-types-check: ## Frontend: regenerate types and fail if they differ from the committed file
+	$(MAKE) fe-types
+	git diff --exit-code frontend/src/types/api.d.ts
+
+fe-e2e: ## Frontend: Playwright against the full Docker stack (seeds demo data first)
+	$(COMPOSE) --profile frontend up -d --build --wait
+	$(COMPOSE) exec -T backend python manage.py seed_demo_data
+	$(COMPOSE) --profile e2e run --rm e2e
+
+fe-build: ## Frontend: production build inside Docker
+	$(FE) npm run build
+
+fe-image: ## Frontend: build the production image
+	docker build --target prod -t siams-frontend:local frontend
+
+fe-shell: ## Frontend: shell inside the container
+	$(FE) bash

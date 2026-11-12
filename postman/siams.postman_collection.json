@@ -1,0 +1,66 @@
+{
+  "info": {
+    "name": "SIAMS API",
+    "description": "Contract and smoke tests, run in CI with Newman. Each team adds folders for its own modules (00 Auth ... 99 Security).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Platform",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/health/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('health is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('responds in under 2s', function () { pm.expect(pm.response.responseTime).to.be.below(2000); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OpenAPI schema",
+          "request": { "method": "GET", "header": [], "url": "{{base_url}}/api/schema/" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('schema is served', function () { pm.response.to.have.status(200); });"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Protected endpoint without token returns the error envelope",
+          "request": { "method": "GET", "header": [], "url": "{{base_url}}/api/v1/auth/user/" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 unauthenticated', function () { pm.response.to.have.status(401); });",
+                  "pm.test('uses the shared error envelope', function () {",
+                  "  var body = pm.response.json();",
+                  "  pm.expect(body).to.have.all.keys('code', 'message', 'details');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

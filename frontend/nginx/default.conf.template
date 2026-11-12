@@ -1,0 +1,35 @@
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # add_header inside a location REPLACES inherited headers, so the shared set is
+    # included in every location (security-headers.inc is rendered from its template).
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        include /etc/nginx/conf.d/security-headers.inc;
+    }
+
+    location = /config.json {
+        add_header Cache-Control "no-store";
+        include /etc/nginx/conf.d/security-headers.inc;
+    }
+
+    location / {
+        add_header Cache-Control "no-cache";
+        include /etc/nginx/conf.d/security-headers.inc;
+        try_files $uri /index.html;
+    }
+}

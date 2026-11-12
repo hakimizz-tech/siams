@@ -1,0 +1,44 @@
+# Production frontend + networks. Use as a THIRD file (requires Docker Compose >= 2.24):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.prod.frontend.yml up -d
+# (`make prod-up` does this once Makefile.frontend is included.)
+# With managed Postgres/Redis/RabbitMQ, drop those services and point the *_URL variables at them.
+networks:
+  web: {}
+  data:
+    internal: true            # databases and brokers have no route to the internet
+  egress: {}                  # backend/worker only: SMTP and object storage
+
+services:
+  db:       { networks: [data] }
+  redis:    { networks: [data] }
+  rabbitmq: { networks: [data] }
+  backend:  { networks: [web, data, egress] }
+  worker:   { networks: [data, egress] }
+  beat:     { networks: [data] }
+  nginx:    { networks: [web] }
+
+  frontend:
+    profiles: !reset []                                      # always on in production
+    image: ${FRONTEND_IMAGE:-siams-frontend}:${IMAGE_TAG:-latest}
+    build:
+      context: ./frontend
+      target: prod
+      args:
+        APP_VERSION: ${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [web]
+    volumes: !reset []
+    environment:
+      APP_NAME: SIAMS
+      SENTRY_DSN: ${FRONTEND_SENTRY_DSN:-}
+      ASSET_ORIGIN: ${FRONTEND_ASSET_ORIGIN:-}               # object-storage origin, for the CSP
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
+  nginx:
+    depends_on:
+      frontend: { condition: service_healthy }
+      backend:  { condition: service_healthy }

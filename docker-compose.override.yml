@@ -1,0 +1,50 @@
+# Development overrides, loaded automatically by `docker compose` (no -f needed).
+# Adds: least-privilege networks (the frontend can never reach db/redis/rabbitmq),
+# the Vite dev container, and the Playwright e2e runner. Delete this file to revert.
+networks:
+  web: {}
+  data: {}
+
+services:
+  db:       { networks: [data] }
+  redis:    { networks: [data] }
+  rabbitmq: { networks: [data] }
+  mailpit:  { networks: [data] }
+  minio:    { networks: [data] }
+  backend:  { networks: [web, data] }
+  worker:   { networks: [data] }
+  beat:     { networks: [data] }
+  nginx:    { networks: [web] }
+
+  frontend:
+    networks: [web]
+    environment:
+      CHOKIDAR_USEPOLLING: ${FRONTEND_USE_POLLING:-false}   # set true on Windows/macOS bind mounts
+      VITE_HMR_CLIENT_PORT: "80"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules             # keeps node_modules Linux-native
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5173/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  e2e:                                                      # make fe-e2e
+    profiles: ["e2e"]
+    image: mcr.microsoft.com/playwright:v1.65.0-noble
+    working_dir: /work
+    networks: [web]
+    volumes:
+      - ./frontend:/work
+      - e2e_node_modules:/work/node_modules
+    environment:
+      E2E_BASE_URL: http://nginx
+      CI: ${CI:-}
+    command: sh -c "npm ci && npx playwright test"
+
+volumes:
+  frontend_node_modules:
+  e2e_node_modules:

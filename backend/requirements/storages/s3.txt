@@ -1,0 +1,2 @@
+# AWS S3 and S3-compatible services (MinIO, Cloudflare R2, DigitalOcean Spaces, Wasabi)
+django-storages[s3]>=1.14

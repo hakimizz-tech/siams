@@ -1,0 +1,77 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "DJ", "C4", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"config/settings/*.py" = ["F403", "F405"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py"]
+testpaths = ["apps", "tests"]
+addopts = "-ra --strict-markers"
+markers = [
+  "storage: tests that exercise file storage backends",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["apps"]
+omit = ["*/migrations/*", "*/tests/*", "*/admin.py", "*/apps.py"]
+
+[tool.coverage.report]
+# Ratchet this up as the apps fill in (target: 85).
+fail_under = 70
+show_missing = true
+skip_empty = true
+
+# Team boundaries (rules of engagement #1 and #2). Run: lint-imports
+[tool.importlinter]
+root_packages = ["apps"]
+
+[[tool.importlinter.contracts]]
+name = "Beta apps never import Alpha services or reports (use domain events and selectors)"
+type = "forbidden"
+source_modules = [
+  "apps.logbook",
+  "apps.visits",
+  "apps.notices",
+  "apps.notifications",
+]
+forbidden_modules = [
+  "apps.accounts.services",
+  "apps.placements.services",
+  "apps.assessments.services",
+  "apps.reports",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Alpha apps read Beta data only through selectors"
+type = "forbidden"
+source_modules = [
+  "apps.accounts",
+  "apps.placements",
+  "apps.assessments",
+  "apps.reports",
+]
+forbidden_modules = [
+  "apps.logbook.models",
+  "apps.logbook.services",
+  "apps.logbook.serializers",
+  "apps.logbook.views",
+  "apps.visits.models",
+  "apps.visits.services",
+  "apps.visits.serializers",
+  "apps.visits.views",
+  "apps.notices.models",
+  "apps.notices.services",
+  "apps.notices.serializers",
+  "apps.notices.views",
+  "apps.notifications",
+]
+allow_indirect_imports = true

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["src/main.tsx", "src/**/*.test.{ts,tsx}", "e2e/**/*.ts", "playwright.config.ts"],
+  "project": ["src/**/*.{ts,tsx}"],
+  "ignore": ["src/components/ui/**", "src/types/api.d.ts", "src/hooks/**"],
+  "ignoreDependencies": [
+    "tw-animate-css",
+    "@fontsource-variable/inter",
+    "tailwindcss",
+    "prettier-plugin-tailwindcss"
+  ]
+}

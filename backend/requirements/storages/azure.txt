@@ -1,0 +1,2 @@
+# Azure Blob Storage
+django-storages[azure]>=1.14

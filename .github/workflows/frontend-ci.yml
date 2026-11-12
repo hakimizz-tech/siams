@@ -1,0 +1,113 @@
+name: frontend-ci
+
+on:
+  push:
+    branches: [main, develop]
+    paths: ["frontend/**", "docker-compose*.yml", "infra/**", ".github/workflows/frontend-ci.yml"]
+  pull_request:
+    paths: ["frontend/**", "docker-compose*.yml", "infra/**", ".github/workflows/frontend-ci.yml"]
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: lint, types, tests, build, budgets
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:cov
+      - run: npm run build
+      - run: npm run size
+      - name: Dependency audit (flip to blocking once the baseline is clean)
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high
+      - name: Unused files and exports (advisory until the screens exist)
+        continue-on-error: true
+        run: npm run knip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+
+  image:
+    name: production image smoke test
+    runs-on: ubuntu-latest
+    needs: static
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target prod -t siams-frontend:ci frontend
+      - name: Run and probe
+        run: |
+          docker run -d --name fe -p 8080:8080 -e APP_NAME=SIAMS -e SENTRY_DSN= -e ASSET_ORIGIN= siams-frontend:ci
+          for i in $(seq 1 20); do curl -fsS http://localhost:8080/healthz && break || sleep 1; done
+          curl -fsS http://localhost:8080/config.json | grep -q '"appName": "SIAMS"'
+          curl -fsS http://localhost:8080/some/deep/link | grep -q '<div id="root">'
+          curl -sSI http://localhost:8080/ | grep -i 'content-security-policy'
+          curl -sSI http://localhost:8080/ | grep -i 'x-content-type-options: nosniff'
+      - if: failure()
+        run: docker logs fe
+      - if: always()
+        run: docker rm -f fe
+
+  # Enable by creating the repository variable FRONTEND_CONTRACT=true once the backend schema
+  # is stable: it fails when src/types/api.d.ts differs from the live backend schema.
+  contract:
+    name: API types match the backend schema
+    if: ${{ vars.FRONTEND_CONTRACT == 'true' }}
+    runs-on: ubuntu-latest
+    needs: static
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose up -d --build --wait db redis rabbitmq backend nginx
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Regenerate types from the live schema and fail on any difference
+        working-directory: frontend
+        env:
+          OPENAPI_URL: http://localhost/api/schema/
+        run: |
+          npm ci
+          npm run api:check
+      - if: failure()
+        run: docker compose logs --no-color backend nginx
+      - if: always()
+        run: docker compose down -v
+
+  # Enable with the repository variable FRONTEND_E2E=true once the pages for the flows exist.
+  e2e:
+    name: end-to-end on the Docker stack
+    if: ${{ vars.FRONTEND_E2E == 'true' }}
+    runs-on: ubuntu-latest
+    needs: static
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose --profile frontend up -d --build --wait
+      - run: docker compose exec -T backend python manage.py seed_demo_data
+      - run: docker compose --profile e2e run --rm e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+      - if: failure()
+        run: docker compose logs --no-color
+      - if: always()
+        run: docker compose down -v

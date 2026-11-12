@@ -1,0 +1,24 @@
+# Require code-owner review in branch protection so ownership is enforced.
+
+# Team Alpha: platform, identity, lifecycle, results, reporting
+/.github/                       @hakimizz-tech
+/infra/                         @hakimizz-tech
+/docker-compose*.yml            @hakimizz-tech
+/Makefile                       @hakimizz-tech
+/backend/Dockerfile             @hakimizz-tech
+/backend/requirements/          @hakimizz-tech
+/backend/config/                @hakimizz-tech
+/backend/apps/core/             @hakimizz-tech
+/backend/apps/accounts/         @hakimizz-tech
+/backend/apps/placements/       @hakimizz-tech
+/backend/apps/assessments/      @hakimizz-tech
+/backend/apps/reports/          @hakimizz-tech
+
+# Team Beta: day-to-day activity and communication ----
+/backend/apps/logbook/          @safaahmedmoalim-cmd @hakimizz-tech
+/backend/apps/visits/           @safaahmedmoalim-cmd @hakimizz-tech
+/backend/apps/notices/          @safaahmedmoalim-cmd @hakimizz-tech
+/backend/apps/notifications/    @safaahmedmoalim-cmd @hakimizz-tech
+
+/docs/                          @safaahmedmoalim-cmd @hakimizz-tech
+/postman/                       @safaahmedmoalim-cmd @hakimizz-tech

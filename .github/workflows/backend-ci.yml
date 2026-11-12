@@ -1,0 +1,121 @@
+name: backend-ci
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  DJANGO_SETTINGS_MODULE: config.settings.test
+  DJANGO_SECRET_KEY: ci-only-secret
+  DATABASE_URL: postgres://siams:siams@localhost:5432/siams
+  REDIS_URL: redis://localhost:6379/0
+  STORAGE_BACKEND: filesystem
+
+jobs:
+  quality:
+    name: lint, boundaries, security
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements/*.txt
+      - run: pip install -r requirements/dev.txt
+      - name: Lint and format check
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Team boundaries (domain events and selectors only)
+        run: lint-imports
+      - name: Security scan (code)
+        run: bandit -r apps config -ll -q
+      - name: Security scan (dependencies)
+        # Flip to blocking once the baseline is clean.
+        continue-on-error: true
+        run: pip-audit -r requirements/base.txt
+
+  test:
+    name: tests and deployment checks
+    runs-on: ubuntu-latest
+    needs: quality
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: siams
+          POSTGRES_USER: siams
+          POSTGRES_PASSWORD: siams
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U siams"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements/*.txt
+      - run: pip install -r requirements/dev.txt
+      - name: Migrations are in sync with models
+        run: python manage.py makemigrations --check --dry-run
+      - name: OpenAPI schema is valid
+        run: python manage.py spectacular --validate --fail-on-warn --file /tmp/schema.yml
+      - name: Run tests with coverage
+        run: pytest --cov=apps --cov-report=xml --cov-report=term-missing -n auto
+      - name: Deployment checks (production settings)
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.prod
+          DJANGO_SECRET_KEY: ci-deploy-check-secret-key-0123456789-abcdefghijklmnopqrstuvwxyz
+          DJANGO_ALLOWED_HOSTS: example.com
+        run: python manage.py check --deploy --fail-level WARNING
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: backend/coverage.xml
+
+  docker-and-contract:
+    name: docker stack and Postman contract tests
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare env
+        run: cp .env.example .env
+      - name: Build and start the stack
+        run: docker compose up -d --build --wait db redis rabbitmq backend worker beat nginx
+      - name: Seed demo data
+        run: docker compose exec -T backend python manage.py seed_demo_data
+      - name: Run Postman collection with Newman
+        run: |
+          npm install -g newman
+          newman run postman/siams.postman_collection.json \
+            -e postman/local.postman_environment.json \
+            --working-dir postman --bail
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

@@ -1,0 +1,12 @@
+{
+  "name": "Academic Supervisor Evaluation (EXAMPLE: replace with the official form)",
+  "assessor_role": "ACADEMIC_SUPERVISOR",
+  "weight_percent": 40,
+  "criteria": [
+    { "code": "A01", "section": "Logbook", "name": "Completeness and regularity of the logbook", "type": "SCORE", "max_score": 10, "weight": 1, "required": true },
+    { "code": "A02", "section": "Logbook", "name": "Reflection on learning", "type": "SCORE", "max_score": 10, "weight": 1, "required": true },
+    { "code": "A03", "section": "Final report", "name": "Quality and structure of the final report", "type": "SCORE", "max_score": 10, "weight": 2, "required": true },
+    { "code": "A04", "section": "Visits", "name": "Performance during supervision visits", "type": "SCORE", "max_score": 10, "weight": 1, "required": true },
+    { "code": "A99", "section": "General", "name": "Supervisor's overall comment", "type": "COMMENT", "required": false }
+  ]
+}
