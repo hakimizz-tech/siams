@@ -36,7 +36,15 @@ if (!URL.createObjectURL) URL.createObjectURL = vi.fn(() => 'blob:mock');
 if (!URL.revokeObjectURL) URL.revokeObjectURL = vi.fn();
 
 //  API mocking: any request a test did not expect is an ERROR -
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' } as never));
+const unhandledRequests: string[] = [];
+
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: 'bypass' } as never);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server.events as any).on('request:unhandled', ({ request }: { request: Request }) => {
+    unhandledRequests.push(`${request.method} ${request.url}`);
+  });
+});
 
 afterEach(() => {
     cleanup();
@@ -46,3 +54,11 @@ afterEach(() => {
 });
 
 afterAll(() => server.close());
+
+// An API request that a test did not mock is a failure (MSW's own option is not honoured by this version).
+afterEach(() => {
+  const pending = unhandledRequests.splice(0);
+  if (pending.length > 0) {
+    throw new Error(`Unhandled API requests (add an MSW handler):\n${pending.join('\n')}`);
+  }
+});

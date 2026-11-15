@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useFieldArray, useWatch } from 'react-hook-form';
 import { addDays } from 'date-fns';
 import { toast } from 'sonner';
@@ -9,20 +9,36 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { ApiErrorAlert } from '@/components/shared/api-error-alert';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { EmptyState } from '@/components/shared/empty-state';
+import { ErrorState } from '@/components/shared/error-state';
 import { FeedbackThread } from '@/components/shared/feedback-thread';
 import { FileDropzone } from '@/components/shared/file-dropzone';
 import { NumberField, SelectField, TextareaField } from '@/components/shared/form-fields';
+import { LoadingState } from '@/components/shared/loading-state';
 import { PageHeader } from '@/components/shared/page-header';
 import { Panel } from '@/components/shared/panel';
 import { ProtectedImage } from '@/components/shared/protected-image';
 import { QueryBoundary } from '@/components/shared/query-boundary';
 import { StatusBadge } from '@/components/shared/status-badge';
-import { ROUTES } from '@/config/routes';
+import { ROUTES, to } from '@/config/routes';
 import { HOURS_OUTLIER_DAY, IMAGE_ACCEPT, MAX_HOURS_PER_DAY, MAX_IMAGES_PER_WEEK, MAX_IMAGE_MB, MIN_ACTIVITY_CHARS } from '@/config/limits';
+import { useMyPlacement } from '@/features/placements';
+import { hasStatus } from '@/lib/api/errors';
 import { applyApiErrors } from '@/lib/form';
 import { formatDate, formatHours, parseDateOnly, toDateOnly } from '@/lib/format';
 import { useZodForm } from '@/lib/use-zod-form';
-import { imageFileUrl, useDeleteImage, useLogbookEntry, useSubmitWeek, useUpdateWeek, useUploadImage, validateImageFile } from '..';
+import {
+  imageFileUrl,
+  useCreateWeek,
+  useDeleteImage,
+  useLogbookEntry,
+  useLogbookTimeline,
+  useSubmitWeek,
+  useUpdateWeek,
+  useUploadImage,
+  validateImageFile,
+} from '..';
+import { timelineRows, weekEntry } from '../week-entry';
 
 const schema = z.object({
   summary: z.string().optional(),
@@ -35,8 +51,14 @@ const schema = z.object({
   ),
 });
 
-function Editor({ entry }: { entry: any }) {
+/**
+ * Week editor. When `isNew` is true nothing exists on the server yet: the week is created
+ * on the first save (with at least one daily line), then the URL switches to the real entry.
+ */
+function Editor({ entry, isNew = false, placementId }: { entry: any; isNew?: boolean; placementId?: string }) {
+  const navigate = useNavigate();
   const editable = entry.status === 'DRAFT' || entry.status === 'RETURNED';
+  const create = useCreateWeek();
   const update = useUpdateWeek();
   const submit = useSubmitWeek();
   const upload = useUploadImage();
@@ -61,15 +83,43 @@ function Editor({ entry }: { entry: any }) {
     return { value: d, label: formatDate(d) };
   });
 
-  const save = async (values: any) => {
-    await update.mutateAsync({ id: entry.id, body: { summary: values.summary ?? '', activities: values.activities } } as any);
+  /**
+   * Saves and returns the entry id (creating the week first when it is new).
+   * Returns null when the week turned out to exist already and the user was sent to it.
+   */
+  const persist = async (values: any): Promise<string | null> => {
+    const body = { summary: values.summary ?? '', activities: values.activities };
+    if (isNew) {
+      try {
+        const created: any = await create.mutateAsync({ placementId: placementId!, body: { week_start: entry.week_start, ...body } } as any);
+        navigate(to.logbookEntry(created.id), { replace: true });
+        return created.id as string;
+      } catch (error) {
+        const e: any = error;
+        if (e?.status === 409) {
+          // 409 week_exists: open the entry that is already there instead of showing an error
+          const existing = e.details?.entry_id as string | undefined;
+          toast.info('This week already exists. Opening it.');
+          navigate(existing ? to.logbookEntry(existing) : (ROUTES.logbook as string), { replace: true });
+          return null;
+        }
+        throw error;
+      }
+    }
+    await update.mutateAsync({ id: entry.id, body } as any);
+    return entry.id as string;
   };
+
+  const needsALine = (values: any) => isNew && values.activities.length === 0;
 
   const onSave = form.handleSubmit(async (values: any) => {
     setFormErrors([]);
+    if (needsALine(values)) {
+      setFormErrors(['Add at least one daily line before saving this week.']);
+      return;
+    }
     try {
-      await save(values);
-      toast.success('Week saved');
+      if ((await persist(values)) !== null) toast.success('Week saved');
     } catch (e) {
       setFormErrors(applyApiErrors(form.setError, e, Object.keys(values)).formErrors);
     }
@@ -82,14 +132,16 @@ function Editor({ entry }: { entry: any }) {
       return;
     }
     try {
-      await save(values);
-      await submit.mutateAsync(entry.id);
+      const id = await persist(values);
+      if (!id) return;
+      await submit.mutateAsync(id as any);
       toast.success('Week submitted for review');
     } catch (e) {
       setFormErrors(applyApiErrors(form.setError, e, Object.keys(values)).formErrors);
     }
   });
 
+  const busy = create.isPending || update.isPending || submit.isPending;
   const images: any[] = entry.images ?? [];
   const latestReturn = [...(entry.feedback ?? [])].reverse()[0];
 
@@ -98,10 +150,15 @@ function Editor({ entry }: { entry: any }) {
       <div className="flex items-center gap-3">
         <StatusBadge kind="logbook" status={entry.status} />
         <span className="text-sm text-muted-foreground">
-          Claimed {formatHours(entry.claimed_hours ?? 0)}
+          Week of {formatDate(entry.week_start)} · Claimed {formatHours(entry.claimed_hours ?? 0)}
           {entry.status === 'APPROVED' && ` · Approved ${formatHours(entry.approved_hours ?? 0)}`}
         </span>
       </div>
+      {isNew && (
+        <Alert>
+          <AlertDescription>This week is not saved yet. Add at least one daily line and save to create it.</AlertDescription>
+        </Alert>
+      )}
       {entry.status === 'SUBMITTED' && <Alert><AlertDescription>Waiting for your supervisor’s review.</AlertDescription></Alert>}
       {entry.status === 'RETURNED' && latestReturn && (
         <Alert><AlertDescription className="whitespace-pre-wrap">Returned: {latestReturn.comment}</AlertDescription></Alert>
@@ -136,45 +193,53 @@ function Editor({ entry }: { entry: any }) {
           <ApiErrorAlert messages={formErrors} />
           {editable && (
             <div className="flex gap-2">
-              <Button type="submit" variant="outline" disabled={update.isPending || submit.isPending}>Save</Button>
-              <Button type="button" disabled={update.isPending || submit.isPending} onClick={() => void onSubmit()}>Submit week</Button>
+              <Button type="submit" variant="outline" disabled={busy}>Save</Button>
+              <Button type="button" disabled={busy} onClick={() => void onSubmit()}>Submit week</Button>
             </div>
           )}
         </form>
       </Panel>
 
-      <Panel title={`Images (${images.length} / ${MAX_IMAGES_PER_WEEK})`}>
-        {editable && (
-          <FileDropzone
-            accept={IMAGE_ACCEPT as any}
-            maxMb={MAX_IMAGE_MB}
-            validate={(file) => validateImageFile(file, images.length)}
-            progress={progress}
-            error={uploadError}
-            disabled={upload.isPending || images.length >= MAX_IMAGES_PER_WEEK}
-            label="Drag an image here, or click to choose"
-            onFile={(file) => {
-              setUploadError(undefined);
-              upload.mutate({ entryId: entry.id, file, onProgress: setProgress } as any, {
-                onError: (e: any) => setUploadError(e?.message ?? 'Upload failed'),
-                onSettled: () => setProgress(0),
-              });
-            }}
-          />
-        )}
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {images.map((img) => (
-            <figure key={img.id} className="space-y-1">
-              <ProtectedImage imageUrl={imageFileUrl(img.id)} alt={img.caption || img.original_name || 'Logbook image'} />
-              {editable && <Button size="sm" variant="outline" onClick={() => setToDelete(img)}>Delete</Button>}
-            </figure>
-          ))}
-        </div>
-      </Panel>
+      {isNew ? (
+        <Panel title="Images">
+          <p className="text-muted-foreground">You can add images after the week is saved.</p>
+        </Panel>
+      ) : (
+        <>
+          <Panel title={`Images (${images.length} / ${MAX_IMAGES_PER_WEEK})`}>
+            {editable && (
+              <FileDropzone
+                accept={IMAGE_ACCEPT as any}
+                maxMb={MAX_IMAGE_MB}
+                validate={(file) => validateImageFile(file, images.length)}
+                progress={progress}
+                error={uploadError}
+                disabled={upload.isPending || images.length >= MAX_IMAGES_PER_WEEK}
+                label="Drag an image here, or click to choose"
+                onFile={(file) => {
+                  setUploadError(undefined);
+                  upload.mutate({ entryId: entry.id, file, onProgress: setProgress } as any, {
+                    onError: (e: any) => setUploadError(e?.message ?? 'Upload failed'),
+                    onSettled: () => setProgress(0),
+                  });
+                }}
+              />
+            )}
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {images.map((img) => (
+                <figure key={img.id} className="space-y-1">
+                  <ProtectedImage imageUrl={imageFileUrl(img.id)} alt={img.caption || img.original_name || 'Logbook image'} />
+                  {editable && <Button size="sm" variant="outline" onClick={() => setToDelete(img)}>Delete</Button>}
+                </figure>
+              ))}
+            </div>
+          </Panel>
 
-      <Panel title="Feedback">
-        <FeedbackThread items={entry.feedback ?? []} canComment={false} />
-      </Panel>
+          <Panel title="Feedback">
+            <FeedbackThread items={entry.feedback ?? []} canComment={false} />
+          </Panel>
+        </>
+      )}
 
       <ConfirmDialog
         open={!!toDelete}
@@ -191,13 +256,50 @@ function Editor({ entry }: { entry: any }) {
   );
 }
 
+function ExistingWeek({ entryId }: { entryId: string }) {
+  const q = useLogbookEntry(entryId, { refetchOnWindowFocus: false } as any);
+  return <QueryBoundary query={q as any}>{(entry: any) => <Editor entry={entry} />}</QueryBoundary>;
+}
+
+/** Guard: if the week already has an entry (old link, second tab), open it instead of the empty editor. */
+function NewWeekEditor({ placement, week }: { placement: any; week: string }) {
+  const timeline = useLogbookTimeline(placement.id);
+  if (timeline.isPending) return <LoadingState variant="form" />;
+  if (timeline.error) return <ErrorState error={timeline.error} onRetry={() => void timeline.refetch()} />;
+  const row = timelineRows(timeline.data).find((w: any) => w.week_start === week);
+  const existing = row ? weekEntry(row).id : undefined;
+  if (existing) return <Navigate to={to.logbookEntry(existing)} replace />;
+  return (
+    <Editor
+      isNew
+      placementId={placement.id}
+      entry={{ id: 'new', status: 'DRAFT', week_start: week, summary: '', activities: [], images: [], feedback: [], claimed_hours: 0 }}
+    />
+  );
+}
+
+function NewWeek() {
+  const [params] = useSearchParams();
+  const mine = useMyPlacement();
+  const week = params.get('week') ?? '';
+  const validWeek = /^\d{4}-\d{2}-\d{2}$/.test(week) && parseDateOnly(week).getDay() === 1 && week <= toDateOnly(new Date());
+
+  if (mine.isPending) return <LoadingState variant="form" />;
+  if (mine.error && !hasStatus(mine.error, 404)) return <ErrorState error={mine.error} onRetry={() => void mine.refetch()} />;
+  const placement: any = hasStatus(mine.error, 404) ? null : mine.data;
+
+  if (!placement || placement.status !== 'APPROVED' || !validWeek) {
+    return <EmptyState title="Pick a week from your logbook" description="Choose a week that has started from the logbook list." />;
+  }
+  return <NewWeekEditor placement={placement} week={week} />;
+}
+
 export default function LogbookEntryPage() {
   const { entryId = '' } = useParams();
-  const q = useLogbookEntry(entryId, { refetchOnWindowFocus: false } as any);
   return (
     <>
       <PageHeader title="Weekly entry" breadcrumbs={[{ label: 'Logbook', to: ROUTES.logbook as string }, { label: 'Week' }]} />
-      <QueryBoundary query={q as any}>{(entry: any) => <Editor entry={entry} />}</QueryBoundary>
+      {entryId === 'new' ? <NewWeek /> : <ExistingWeek entryId={entryId} />}
     </>
   );
 }

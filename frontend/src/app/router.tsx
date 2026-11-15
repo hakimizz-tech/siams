@@ -1,3 +1,4 @@
+import { withHydrateFallback } from './hydrate-fallback';
 import {
     createBrowserRouter,
     createMemoryRouter,
@@ -94,6 +95,6 @@ export const routes: RouteObject[] = [
     },
 ];
 
-export const createAppRouter = () => createBrowserRouter(routes);
+export const createAppRouter = () => createBrowserRouter(withHydrateFallback(routes));
 export const createTestRouter = (initialEntries: string[]) =>
-    createMemoryRouter(routes, { initialEntries });
+    createMemoryRouter(withHydrateFallback(routes), { initialEntries });

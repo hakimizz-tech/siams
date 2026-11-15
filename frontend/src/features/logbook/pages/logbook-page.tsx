@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ApiErrorAlert } from '@/components/shared/api-error-alert';
+import { Skeleton } from '@/components/ui/skeleton';
 import { DataTable } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
-import { LoadingState } from '@/components/shared/loading-state';
 import { ErrorState } from '@/components/shared/error-state';
+import { LoadingState } from '@/components/shared/loading-state';
 import { PageHeader } from '@/components/shared/page-header';
 import { ProgressMeter } from '@/components/shared/progress-meter';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -14,39 +13,38 @@ import { ROUTES, to } from '@/config/routes';
 import { useMyPlacement } from '@/features/placements';
 import { usePlacementSummary } from '@/features/reports';
 import { hasStatus } from '@/lib/api/errors';
-import { formatDate, formatHours } from '@/lib/format';
-import { rows } from '@/lib/rows';
-import { useCreateWeek, useLogbookTimeline } from '..';
+import { formatDate, formatHours, toDateOnly } from '@/lib/format';
+import { useLogbookTimeline } from '..';
+import { timelineRows, weekEntry } from '../week-entry';
+
+/** Hours progress. A failed summary must never look like "0 hours approved". */
+function HoursProgress({ placementId }: { placementId: string }) {
+  const q = usePlacementSummary(placementId);
+  if (q.isPending) return <Skeleton className="mb-4 h-8 max-w-md" />;
+  if (q.error) {
+    return <p className="mb-4 text-sm text-muted-foreground">Hours progress is unavailable right now.</p>;
+  }
+  const s: any = q.data ?? {};
+  return (
+    <div className="mb-4 max-w-md">
+      <ProgressMeter
+        label="Approved hours"
+        value={s.approved_hours ?? s.hours?.approved ?? 0}
+        max={s.required_hours ?? s.hours?.required ?? 0}
+        unit="h"
+      />
+    </div>
+  );
+}
 
 function Weeks({ placement }: { placement: any }) {
-  const navigate = useNavigate();
   const timeline = useLogbookTimeline(placement.id);
-  const summary: any = usePlacementSummary(placement.id).data;
-  const create = useCreateWeek();
-  const [error, setError] = useState<unknown>();
-  const list = Array.isArray(timeline.data) ? timeline.data : ((timeline.data as any)?.weeks ?? rows(timeline.data));
-
-  const start = async (weekStart: string) => {
-    setError(undefined);
-    try {
-      const entry: any = await create.mutateAsync({ placementId: placement.id, body: { week_start: weekStart, summary: '', activities: [] } } as any);
-      navigate(to.logbookEntry(entry.id));
-    } catch (e) {
-      setError(e);
-    }
-  };
+  const list = timelineRows(timeline.data);
+  const today = toDateOnly(new Date());
 
   return (
     <>
-      <div className="mb-4 max-w-md">
-        <ProgressMeter
-          label="Approved hours"
-          value={summary?.approved_hours ?? summary?.hours?.approved ?? 0}
-          max={summary?.required_hours ?? summary?.hours?.required ?? 0}
-          unit="h"
-        />
-      </div>
-      <ApiErrorAlert error={error} />
+      <HoursProgress placementId={placement.id} />
       <DataTable
         data={list}
         isLoading={timeline.isPending}
@@ -56,16 +54,40 @@ function Weeks({ placement }: { placement: any }) {
         columns={[
           { header: 'Week starting', cell: (c) => formatDate(c.row.original.week_start) },
           { header: 'Status', cell: (c) => <StatusBadge kind="logbook" status={c.row.original.status} /> },
-          { header: 'Claimed', cell: (c) => (c.row.original.claimed_hours != null ? formatHours(c.row.original.claimed_hours) : '—') },
-          { header: 'Approved', cell: (c) => (c.row.original.approved_hours != null ? formatHours(c.row.original.approved_hours) : '—') },
+          {
+            header: 'Claimed',
+            cell: (c) => {
+              const v = weekEntry(c.row.original).claimed;
+              return v != null ? formatHours(v as any) : '—';
+            },
+          },
+          {
+            header: 'Approved',
+            cell: (c) => {
+              const v = weekEntry(c.row.original).approved;
+              return v != null ? formatHours(v as any) : '—';
+            },
+          },
         ]}
-        rowActions={(w: any) =>
-          w.entry_id || w.id ? (
-            <Button asChild size="sm" variant="outline"><Link to={to.logbookEntry(w.entry_id ?? w.id)}>Open</Link></Button>
-          ) : (
-            <Button size="sm" disabled={create.isPending} onClick={() => void start(w.week_start)}>Start this week</Button>
-          )
-        }
+        rowActions={(w: any) => {
+          const { id } = weekEntry(w);
+          if (id) {
+            return (
+              <Button asChild size="sm" variant="outline">
+                <Link to={to.logbookEntry(id)}>Open</Link>
+              </Button>
+            );
+          }
+          // A week that has any status other than MISSING already exists: never offer to create it again.
+          if (w.status !== 'MISSING') return null;
+          if (w.week_start > today) return <span className="text-xs text-muted-foreground">Not started yet</span>;
+          // Nothing is created yet: the week is saved on the first save in the editor.
+          return (
+            <Button asChild size="sm">
+              <Link to={`${to.logbookEntry('new')}?week=${w.week_start}`}>Start this week</Link>
+            </Button>
+          );
+        }}
       />
     </>
   );
@@ -82,7 +104,14 @@ export default function LogbookPage() {
       {placement?.status === 'APPROVED' ? (
         <Weeks placement={placement} />
       ) : (
-        <EmptyState title="Your placement must be approved first" action={<Button asChild><Link to={ROUTES.placement as string}>Go to my placement</Link></Button>} />
+        <EmptyState
+          title="Your placement must be approved first"
+          action={
+            <Button asChild>
+              <Link to={ROUTES.placement as string}>Go to my placement</Link>
+            </Button>
+          }
+        />
       )}
     </>
   );

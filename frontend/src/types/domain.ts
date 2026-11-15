@@ -36,7 +36,7 @@ export type CriterionType = 'SCORE' | 'COMMENT';
 /** DRF DecimalField values arrive as strings ("60.00"); dashboards use numbers. */
 export type DecimalValue = string | number;
 
-// ---- people --------------------------------------------------------------------------
+//  people 
 export interface StudentProfile {
     registration_number: string;
     programme: string;
@@ -78,7 +78,7 @@ export interface SupervisorOption {
     organization_name: string | null;
 }
 
-// ---- placements ----------------------------------------------------------------------
+//  placements 
 export interface Period {
     id: string;
     name: string;
@@ -136,7 +136,7 @@ export interface TimelineEvent {
     remarks: string;
 }
 
-// ---- logbook, flags, visits, notices (Team Beta: contract from the design document) ----
+//  logbook, flags, visits, notices (Team Beta: contract from the design document) 
 export interface DailyActivity {
     id?: string;
     work_date: string;
@@ -215,7 +215,7 @@ export interface Notice {
     created_at?: string;
 }
 
-// ---- assessments, final report, result -------------------------------------------------
+//  assessments, final report, result -
 export interface Criterion {
     id: string;
     code: string;
@@ -298,7 +298,7 @@ export interface PlacementResult {
     ready: boolean;
 }
 
-// ---- dashboards and reports -----------------------------------------------------------------
+//  dashboards and reports -
 export interface ActionItem {
     type: string;
     message: string;
@@ -365,7 +365,7 @@ export interface PeriodSummary {
     results: SummaryRow[];
 }
 
-// ---- jobs ----------------------------------------------------------------------------------------
+//  jobs 
 export interface JobStart {
     job_id: string;
     status: JobStatus;

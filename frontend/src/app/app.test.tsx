@@ -1,8 +1,10 @@
+import { http, HttpResponse } from 'msw';
+import { server } from '@/test/msw/server';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { RouterProvider } from 'react-router-dom';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ROUTES } from '@/config/routes';
 import { createQueryClient } from '@/lib/api/query-client';
 import { AuthContext } from '@/lib/auth/auth-context';
@@ -17,6 +19,21 @@ beforeAll(async () => {
     await import('@/app/layouts/app-layout');
     await import('@/features/dashboards/pages/dashboard-page');
 }, 60_000);
+
+// unmocked route data: pages rendered by the guards fetch their data; return empty envelopes
+beforeEach(() => {
+    server.use(
+        http.get('*/api/v1/dashboard/*', () =>
+            HttpResponse.json({ widgets: {}, action_items: [], notices: [], unavailable: [] }),
+        ),
+        http.get('*/api/v1/periods/', () =>
+            HttpResponse.json({ count: 0, next: null, previous: null, results: [] }),
+        ),
+        http.get('*/api/v1/users/', () =>
+            HttpResponse.json({ count: 0, next: null, previous: null, results: [] }),
+        ),
+    );
+});
 
 function renderAt(
     path: string,
