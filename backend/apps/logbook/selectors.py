@@ -28,6 +28,7 @@ class PlacementLike(Protocol):
 
 
 def entries_visible_to(user):
+    """Entries that the given user can see, regardless of status."""
     queryset = LogbookEntry.objects.select_related("student").prefetch_related(
         "activities",
         "images",
@@ -65,21 +66,22 @@ def approved_hours_by_placement(placement_ids: Iterable) -> dict:
     )
     return {row["placement_id"]: row["total"] or Decimal("0") for row in totals}
 
+# One counter per logbook status, taken from the model so a new status can never
+# raise KeyError (a DRAFT week used to crash every dashboard and summary).
+_STATUS_KEYS = tuple(status.value.lower() for status in LogbookStatus)
+
+def _empty_week_counts() -> dict:
+    counts = {key: 0 for key in _STATUS_KEYS}
+    counts.update({"missing": 0, "expected": 0})
+    return counts
 
 def weeks_summary_by_placement(placement_ids: Iterable) -> dict:
-    summary = defaultdict(
-        lambda: {
-            "approved": 0,
-            "submitted": 0,
-            "returned": 0,
-            "missing": 0,
-            "expected": 0,
-        }
-    )
+    summary = defaultdict(_empty_week_counts)
     entries = LogbookEntry.objects.filter(placement_id__in=placement_ids)
     for entry in entries:
-        key = str(entry.placement_id)
-        summary[key][entry.status.lower()] += 1
+        counts = summary[str(entry.placement_id)]
+        status = entry.status.lower()
+        counts[status] = counts.get(status, 0) + 1
     return dict(summary)
 
 

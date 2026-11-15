@@ -22,6 +22,7 @@ backend/staticfiles/
 # --- node / frontend ---
 node_modules/
 frontend/dist/
+package-lock.json
 # --- editors / os ---
 .idea/
 .vscode/
@@ -31,6 +32,7 @@ infra/certs/
 *.bak
 
 *.sh
+!backend/scripts/*.sh
 *.bak
 
 # docs/architecture.md

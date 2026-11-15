@@ -30,7 +30,9 @@ test.describe('access control', () => {
     test('the refresh token is invisible to JavaScript', async ({ page }) => {
         await signIn(page, 'student');
         await page.goto('/app/dashboard');
-        const visible = await page.evaluate(() => document.cookie);
+        const visible = await page.evaluate(
+            () => (globalThis as typeof globalThis & { document: { cookie: string } }).document.cookie,
+        );
         expect(visible).not.toContain('siams-refresh');
         const cookies = await page.context().cookies();
         const refresh = cookies.find((cookie) => cookie.name === 'siams-refresh');

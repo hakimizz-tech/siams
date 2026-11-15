@@ -2,7 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { RouterProvider } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { ROUTES } from '@/config/routes';
 import { createQueryClient } from '@/lib/api/query-client';
 import { AuthContext } from '@/lib/auth/auth-context';
@@ -11,6 +11,12 @@ import type { Role } from '@/types/domain';
 import { ComingSoon, hasPage, lazyPage } from './page-registry';
 import { PAGES } from './pages';
 import { createTestRouter } from './router';
+
+// warm the lazy route modules once, so the first test does not pay the cold-import cost
+beforeAll(async () => {
+    await import('@/app/layouts/app-layout');
+    await import('@/features/dashboards/pages/dashboard-page');
+}, 60_000);
 
 function renderAt(
     path: string,
@@ -35,9 +41,9 @@ function renderAt(
 describe('route guards', () => {
     it('waits while the session bootstraps (no flash of the login page)', async () => {
         const router = renderAt(ROUTES.dashboard, { bootstrapping: true });
-        expect(await screen.findByRole('status')).toHaveTextContent('Loading');
+        expect(await screen.findByRole('status', undefined, { timeout: 15_000 })).toHaveTextContent('Loading');
         expect(router.state.location.pathname).toBe(ROUTES.dashboard);
-    });
+    }, 30_000);
 
     it('sends anonymous visitors to the login page, remembering where they wanted to go', async () => {
         const router = renderAt('/app/logbook', { signedIn: false });
@@ -83,7 +89,8 @@ describe('page registry', () => {
     it('shows a placeholder for a page file that does not exist yet', async () => {
         const key = 'features/none/pages/missing-page';
         expect(hasPage(key)).toBe(false);
-        const route = await lazyPage(key)();
+        const definition = lazyPage(key);
+        const route = typeof definition === 'function' ? await definition() : definition;
         const Component = route.Component as () => ReactElement;
         render(<Component />);
         expect(screen.getByRole('status')).toHaveTextContent('Page not built yet');

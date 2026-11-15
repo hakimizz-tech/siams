@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 
-/** Users created by `make seed` (backend/apps/*/seed.py). */
+// /** Users created by `make seed` (backend/apps/*/seed.py). */
 export const DEMO_PASSWORD = 'Password123!';
 export const DEMO_USERS = {
   coordinator: 'coordinator@siams.local',

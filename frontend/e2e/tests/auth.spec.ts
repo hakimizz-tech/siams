@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { DEMO_PASSWORD, DEMO_USERS, signIn, type DemoUser } from '../fixtures/auth';
+import { DEMO_USERS, signIn, type DemoUser } from '../fixtures/auth';
 
 const ROLES: DemoUser[] = ['student', 'workplace', 'academic', 'coordinator'];
 

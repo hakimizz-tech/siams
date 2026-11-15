@@ -36,7 +36,7 @@ if (!URL.createObjectURL) URL.createObjectURL = vi.fn(() => 'blob:mock');
 if (!URL.revokeObjectURL) URL.revokeObjectURL = vi.fn();
 
 //  API mocking: any request a test did not expect is an ERROR -
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' } as never));
 
 afterEach(() => {
     cleanup();

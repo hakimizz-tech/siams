@@ -12,7 +12,8 @@ FROM base AS dev
 COPY requirements/ requirements/
 RUN pip install -r requirements/dev.txt
 COPY . .
-RUN chmod +x scripts/*.sh && mkdir -p /app/media
+RUN chmod +x scripts/*.sh
+RUN mkdir -p /app/media
 ENTRYPOINT ["scripts/entrypoint.sh"]
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
 
